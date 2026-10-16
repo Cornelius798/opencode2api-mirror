@@ -2,7 +2,7 @@ name: Sync Upstream
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # Daily at 01:00 UTC (09:00 Beijing)
+    - cron: '0 18 * * *'  # Daily at 18:00 UTC (02:00 Beijing)
   workflow_dispatch:
 
 jobs:
@@ -18,17 +18,11 @@ jobs:
           git remote add upstream https://github.com/jasonxu114514/opencode2api.git || true
           git fetch upstream main
       
-      - name: Merge upstream
+      - name: Merge upstream and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git merge upstream/main --no-edit || echo "Merge conflict, manual intervention needed"
-      
-      - name: Push if changed
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git push origin main
-            echo "Synced upstream changes"
-          else
-            echo "Already up to date"
-          fi
+          # Push directly: after a successful merge the worktree is clean,
+          # so `git status --porcelain` is always empty and would skip the push.
+          git push origin main

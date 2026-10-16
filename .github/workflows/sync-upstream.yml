@@ -1,0 +1,34 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/jasonxu114514/opencode2api.git || true
+          git fetch upstream main
+      
+      - name: Merge upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git merge upstream/main --no-edit || echo "Merge conflict, manual intervention needed"
+      
+      - name: Push if changed
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git push origin main
+            echo "Synced upstream changes"
+          else
+            echo "Already up to date"
+          fi

@@ -142,6 +142,7 @@ jobs:
       - name: Upload release files
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 1
           name: ${{ steps.metadata.outputs.package_name }}
           path: |
             dist/${{ steps.metadata.outputs.package_name }}.${{ matrix.archive }}

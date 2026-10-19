@@ -1,6 +1,6 @@
 # opencode2api
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [Tiếng Việt](README.vi.md)
 
 A Go gateway for **OpenCode Zen and Zen Go**. It exposes Chat Completions, Responses, and Anthropic Messages endpoints, translates between their native protocols, and manages upstream keys and proxies.
 
@@ -241,9 +241,9 @@ Administration endpoints (login required; writes also require CSRF): `GET /api/m
 
 Keys are initially spread across proxies. Real traffic can trigger proxy checks, key rebinding, and cooldowns. Unhealthy proxies are rechecked every 15 minutes against Cloudflare trace.
 
-A stable session hash selects the preferred key or anonymous proxy. Send an explicit `x-session-id` to separate independent conversations. The gateway also accepts `x-opencode-session`, `x-session-affinity`, `conversation-id`, `conversation_id`, and `metadata.session_id`.
+A stable session hash selects the preferred key or anonymous proxy. Send an explicit `x-session-id` to separate independent conversations. The gateway also accepts the `x-opencode-session`, `x-session-affinity`, `session_id`, `conversation-id`, and `conversation_id` headers, the `conversation_id` and `metadata.session_id` body fields, and the session ID inside Claude Code's `metadata.user_id`.
 
-Without an explicit ID, the first user message is used as a seed. Conversations beginning with the same content can therefore share affinity. Changing pool membership can change the selected node.
+Sessions and projects the gateway derives itself are scoped to the caller's server key, so different keys never share an upstream session, preferred key, or anonymous proxy. Official OpenCode sessions (`ses_…`) sent by the client are kept as-is. Without an explicit ID, the system prompt and the first user message are used as a seed. Conversations under the same key that begin with the same system prompt and content can therefore still share affinity; give users who must stay isolated their own server keys. Changing pool membership can change the selected node.
 
 Cooldowns grow exponentially up to eight times `performance.failure_cooldown_seconds`, and a longer `Retry-After` is honored. If every authenticated key is cooling down, routing may try the key whose cooldown ends first. Anonymous nodes still in cooldown are skipped.
 
@@ -260,8 +260,9 @@ See [config.example.json](config.example.json) for a complete starting configura
 | `zen_keys`, `go_keys`       | At least one upstream key is required unless anonymous access is enabled.   |
 | `anonymous`                 | `false`.                                                                    |
 | `prefer`                    | `go`; accepts `go` or `zen`.                                                |
-| `upstream.zen`              | `https://opencode.ai/inference/openai`.                                                  |
+| `upstream.zen`              | `https://opencode.ai/zen`.                                                  |
 | `upstream.go`               | `https://opencode.ai/zen/go`.                                               |
+| `upstream.anonymous`        | `https://opencode.ai/inference`; the anonymous lane's fallback after `/zen`. |
 | `proxies`                   | Falls back to `["direct"]` when both proxy sources are empty.               |
 | `proxyfile`                 | Optional; relative paths resolve beside the configuration file.             |
 | `models.refresh_seconds`    | `300`; minimum 1.                                                           |
@@ -315,6 +316,27 @@ direct
 ```
 
 Comment markers are `#`, `;`, and `//` at the start of a line or after whitespace.
+
+#### Rotating proxy pools
+
+Suffix an entry with `#pool` (or prefix it with `pool+`) to declare that the endpoint is a rotating proxy pool such as [Resin](https://github.com/Resinat/Resin), where every new TCP connection exits from a different IP:
+
+```text
+http://127.0.0.1:7890#pool
+socks5://127.0.0.1:1080#pool
+pool+http://127.0.0.1:7891
+```
+
+A pool entry is handled differently from a static proxy:
+
+| Behavior                  | Static proxy                                                        | `#pool` entry                                                                |
+| ------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Connection reuse          | Keep-alive plus HTTP/2 multiplexing (`performance.*` pool settings) | A fresh TCP + CONNECT tunnel per request (`DisableKeepAlives`, no HTTP/2)    |
+| Failure cooldown          | 15s–120s exponential backoff, inflated by `Retry-After`             | None: the next request simply draws a new exit IP                             |
+| Health eviction           | Marked unhealthy, keys rebound, rechecked every 15 minutes          | Never evicted; the health check is skipped entirely                           |
+| Anonymous lane retries    | At most one attempt per configured proxy                            | Up to `retry.max_attempts`, cycling the pool entry                            |
+
+Use it when the endpoint behind the URL already performs the rotation and the pool's own exit IPs are individually rate-limited or flaky; the gateway then treats each attempt as a fresh endpoint instead of pinning the conversation to one exit. A single `#pool` entry is enough — you no longer need to list dozens of exits. Static entries keep the pooling behavior described below.
 
 ### Timeouts and connection pools
 
@@ -386,6 +408,17 @@ The server forces `stream: false`. Use `{"mode":"selected","tier":"zen","id":"KE
 
 After execution, the management endpoint returns HTTP 200 with the actual result in `ok`, `http_status`, `request_id`, `route`, and `response`. Selected-key results also include `selected_key` and `key_test`: `usable`, `rejected`, `rate_limited`, `transport_error`, `upstream_error`, `request_error`, or `unavailable`. Invalid management input, authentication, CSRF, and throttling retain their own HTTP error statuses.
 
+### Interface language
+
+The WebUI loads its translations from `webui/js/i18n.js`. It ships with **简体中文** (default), **English**, and **Tiếng Việt**. The original Simplified Chinese copy lives in `index.html` and `webui/js/` and stays the fallback for every string without a translation, so adding a language never rewrites the original.
+
+- The selector sits in the topbar, and on the login card.
+- The choice is stored in `localStorage` under `opencode2api.ui.lang`.
+- Switching re-renders both static text (`data-i18n`, `data-i18n-attr`) and JavaScript-generated text without reloading the page.
+- Dates and times follow the selected locale as well.
+
+To add a language, add one block to `DICTIONARY` in `webui/js/i18n.js`, then register its code in `SUPPORTED`, `LABELS`, and `DATE_LOCALES`.
+
 ### Saving and reloading
 
 The server validates a candidate configuration and builds its replacement gateway before saving and switching. Failed validation or persistence leaves the active gateway in place. Requests already running continue on their original gateway.
@@ -440,10 +473,10 @@ internal/
   protocol/              Request/response conversion and SSE parsing/output
   telemetry/             Request tracking, metrics, logs, and recovery
 webui/
-  embed.go               Embeds the three static assets into the executable
+  embed.go               Embeds the static assets into the executable
   index.html             Page structure
-  app.js                 UI behavior
-  styles.css             UI styles
+  css/                   Design tokens, base styles, components and page layouts
+  js/                    ES modules: shell, i18n, shared helpers and one module per page
 ```
 
 Suggested reading order:
@@ -451,7 +484,7 @@ Suggested reading order:
 1. [Command entry](cmd/opencode2api/main.go) → [runtime management](internal/gateway/runtime.go) → [HTTP handlers](internal/gateway/gateway.go).
 2. [Upstream attempts](internal/gateway/upstream.go) and [model routing](internal/models/catalog.go) explain how a request reaches a provider.
 3. [Request conversion](internal/protocol/request.go), [response conversion](internal/protocol/response.go), and [stream transport](internal/protocol/stream.go) cover protocol behavior.
-4. [Management routes](internal/admin/server.go) and [WebUI logic](webui/app.js) cover configuration and diagnostics.
+4. [Management routes](internal/admin/server.go) and [WebUI logic](webui/js/main.js) cover configuration and diagnostics.
 
 Run Go formatting, analysis, and the command build:
 
@@ -466,10 +499,10 @@ For local development, start the service with `go run ./cmd/opencode2api -config
 Node.js is only needed for the WebUI JavaScript syntax check:
 
 ```bash
-node --check webui/app.js
+for f in webui/js/*.js webui/js/pages/*.js; do node --input-type=module --check < "$f"; done
 ```
 
-`.editorconfig`, `.gitattributes`, and Go formatting standardize the source. CI runs `go vet` and builds with Go 1.24 and stable Go on Linux/Windows, plus Go formatting, WebUI syntax, and entrypoint shell syntax checks. Release archives include both READMEs.
+`.editorconfig`, `.gitattributes`, and Go formatting standardize the source. CI runs `go vet` and builds with Go 1.24 and stable Go on Linux/Windows, plus Go formatting, WebUI syntax, and entrypoint shell syntax checks. Release archives include all three READMEs.
 
 ## Troubleshooting
 

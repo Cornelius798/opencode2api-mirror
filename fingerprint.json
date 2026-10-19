@@ -1,0 +1,24 @@
+{
+  "note": "Hot-loadable OpenCode anonymous fingerprint. Clients fetch this on startup; when the upstream changes verification, update this file instead of shipping a new binary. Session algorithm changes (session_format) still need a binary update.",
+  "version": 2,
+  "updated_at": "2026-10-19T09:56:00Z",
+  "opencode": {
+    "endpoint": "https://opencode.ai/inference/v1/chat/completions",
+    "user_agent": "opencode/latest/2.0.32/cli",
+    "auth": "Bearer public",
+    "headers": {
+      "Accept": "application/json, text/event-stream",
+      "x-opencode-client": "cli"
+    },
+    "session_format": "ses_descending_v1",
+    "tools_url": "https://raw.githubusercontent.com/Cornelius798/open2api-go/main/fingerprint.json.tools",
+    "tools_version": 1,
+    "core_tools": [
+      "shell",
+      "edit",
+      "glob",
+      "grep",
+      "read"
+    ]
+  }
+}

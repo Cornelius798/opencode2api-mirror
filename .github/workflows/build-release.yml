@@ -11,6 +11,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 2026-10-19 修：默认 GITHUB_TOKEN 只读 → 建 Release 报
+    # "Resource not accessible by integration"（main 上这个 workflow 一直红）。
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:

@@ -139,15 +139,28 @@ jobs:
           fi
           (cd dist && sha256sum "$archive" > "$archive.sha256")
 
-      - name: Upload release files
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 1
-          name: ${{ steps.metadata.outputs.package_name }}
-          path: |
-            dist/${{ steps.metadata.outputs.package_name }}.${{ matrix.archive }}
-            dist/${{ steps.metadata.outputs.package_name }}.${{ matrix.archive }}.sha256
-          if-no-files-found: error
+      - name: Publish package to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PACKAGE_NAME: ${{ steps.metadata.outputs.package_name }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          # 2026-10-19：不再经 upload-artifact 中转——Actions 存储配额满时
+          # 六个平台会全部卡在上传产物、release 被跳过（v0.4.7 就是这么丢包的）。
+          set -euo pipefail
+          files=("dist/${PACKAGE_NAME}.${ARCHIVE}" "dist/${PACKAGE_NAME}.${ARCHIVE}.sha256")
+          release_type=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then release_type+=(--prerelease); fi
+          for i in 1 2 3; do
+            if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then break; fi
+            if gh release create "$RELEASE_TAG" "${files[@]}" "${release_type[@]}" \
+                 --generate-notes --title "$RELEASE_TAG" --target "$GITHUB_SHA" \
+                 --repo "$GITHUB_REPOSITORY" 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
   container:
     name: Publish GHCR image
@@ -203,32 +216,3 @@ jobs:
           provenance: mode=max
           sbom: true
 
-  release:
-    name: Publish GitHub Release
-    needs: [prepare, build, container]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download release files
-        uses: actions/download-artifact@v4
-        with:
-          pattern: opencode2api_*
-          path: release-files
-          merge-multiple: true
-
-      - name: Create or update release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
-        run: |
-          release_type=()
-          if [[ "$RELEASE_TAG" == *-* ]]; then
-            release_type+=(--prerelease)
-          fi
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-files/* --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG" release-files/* "${release_type[@]}" --generate-notes --title "$RELEASE_TAG" --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
-          fi

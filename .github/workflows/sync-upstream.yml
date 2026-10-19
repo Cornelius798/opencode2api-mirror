@@ -12,6 +12,9 @@ jobs:
     # "The requested URL returned error: 403"（自 10-16 起每天同步都失败）。
     permissions:
       contents: write
+      # 上游会改 .github/workflows/*，缺这条会被拒：
+      # "refusing to allow a GitHub App to create or update workflow ... without `workflows` permission"
+      workflows: write
     steps:
       - uses: actions/checkout@v4
         with:

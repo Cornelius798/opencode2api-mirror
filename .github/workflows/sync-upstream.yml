@@ -8,6 +8,10 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # 2026-10-19 修：默认 GITHUB_TOKEN 只读 → git push 报
+    # "The requested URL returned error: 403"（自 10-16 起每天同步都失败）。
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:

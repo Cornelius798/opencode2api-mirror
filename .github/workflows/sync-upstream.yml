@@ -12,9 +12,6 @@ jobs:
     # "The requested URL returned error: 403"（自 10-16 起每天同步都失败）。
     permissions:
       contents: write
-      # 上游会改 .github/workflows/*，缺这条会被拒：
-      # "refusing to allow a GitHub App to create or update workflow ... without `workflows` permission"
-      workflows: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +26,16 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git merge upstream/main --no-edit || echo "Merge conflict, manual intervention needed"
-          # Push directly: after a successful merge the worktree is clean,
-          # so `git status --porcelain` is always empty and would skip the push.
+          # --no-commit：先不生成合并提交，好把 .github/workflows 还原成本仓库版本。
+          # 原因：①上游的 workflow 会覆盖我们对 CI 的补丁（retention-days / permissions）；
+          #      ②GITHUB_TOKEN 没有改 workflow 文件的权限，改了也推不上去
+          #        （refusing to allow a GitHub App to create or update workflow）。
+          if git merge upstream/main --no-edit --no-ff --no-commit; then
+            git checkout HEAD -- .github/workflows
+            git commit -m "chore(sync): merge upstream/main $(date -u +%Y-%m-%d)"
+          else
+            echo "Merge conflict, manual intervention needed"
+            git merge --abort || true
+            exit 0
+          fi
           git push origin main
